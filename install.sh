@@ -163,4 +163,20 @@ ufw allow 22/tcp
 
 systemctl restart ocserv
 
+# Добавление cron задания для перезапуска ocserv каждое первое число месяца в 4:00 ночи
+CRON_FILE="/etc/cron.d/ocserv_restart"
+CRON_JOB="0 4 1 * * root systemctl restart ocserv"
+echo "Добавление cron задания для перезапуска ocserv..."
+if [ -f "$CRON_FILE" ]; then
+    if grep -q "systemctl restart ocserv" "$CRON_FILE"; then
+         echo "Крон задание уже существует в $CRON_FILE."
+    else
+         echo "$CRON_JOB" >> "$CRON_FILE"
+         echo "Крон задание обновлено в $CRON_FILE."
+    fi
+else
+    echo "$CRON_JOB" > "$CRON_FILE"
+    echo "Крон задание создано в $CRON_FILE."
+fi
+
 echo "Установка и настройка ocserv завершены."
