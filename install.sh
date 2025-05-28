@@ -10,16 +10,26 @@ fi
 # Определяем директорию, где находится скрипт (для поиска ocserv.conf)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Если файл настроек (из ssl.sh) существует, читаем из него домен и секрет,
-# иначе запрашиваем их у пользователя
-if [ -f "$SCRIPT_DIR/install_settings.conf" ]; then
-  echo "Чтение настроек из install_settings.conf..."
-  source "$SCRIPT_DIR/install_settings.conf"
+# Проверяем наличие .env файла и читаем переменные из него
+if [ -f "$SCRIPT_DIR/.env" ]; then
+  echo "Чтение настроек из .env..."
+  # Экспортируем переменные из .env файла
+  export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
+  
+  # Проверяем, что необходимые переменные установлены
+  if [ -z "$DOMAIN" ] || [ -z "$SECRET" ]; then
+    echo "Ошибка: В файле .env не найдены обязательные переменные DOMAIN и/или SECRET"
+    echo "Пример содержимого .env файла:"
+    echo "DOMAIN=example.com"
+    echo "SECRET=your_secret_password"
+    exit 1
+  fi
 else
-  echo "Файл install_settings.conf не найден."
-  read -p "Введите ваш домен (например, example.com): " DOMAIN
-  read -sp "Введите секрет (пароль/ключ) для VPN: " SECRET
-  echo ""
+  echo "Ошибка: Файл .env не найден в директории $SCRIPT_DIR"
+  echo "Создайте файл .env со следующим содержимым:"
+  echo "DOMAIN=your_domain.com"
+  echo "SECRET=your_secret_password"
+  exit 1
 fi
 
 echo "Устанавливаем необходимые зависимости..."
@@ -82,6 +92,10 @@ fi
 
 systemctl daemon-reload
 systemctl restart ocserv
+
+# Включаем автозапуск службы ocserv при загрузке системы
+echo "Включение автозапуска службы ocserv..."
+systemctl enable ocserv
 
 # Копирование шаблона конфигурации ocserv
 cd "$SCRIPT_DIR"  # Возвращаемся в корень репозитория
