@@ -167,6 +167,11 @@ echo "Разрешение порта 443 (TCP и UDP)..."
 ufw allow 443/tcp
 ufw allow 443/udp
 
+# Разрешаем порт 443 (TCP и UDP) перед перезапуском ufw
+echo "Разрешение порта 80 (TCP и UDP)..."
+ufw allow 80/tcp
+ufw allow 80/udp
+
 echo "Включаем ufw и перезапускаем службу..."
 ufw --force enable
 systemctl restart ufw
