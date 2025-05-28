@@ -75,7 +75,7 @@ echo "Создание конфигурации nginx для домена $DOMAI
 cat <<EOF > /etc/nginx/sites-available/$DOMAIN.conf
 server {
     server_name $DOMAIN www.$DOMAIN;
-    listen $DOMAIN:80;
+    listen 80;
 
     location /.well-known {
     	root /var/www/html;
