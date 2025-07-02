@@ -4,9 +4,9 @@
 
 ## Установка
  - Выполните клонирование репозитория `git@github.com:dev-lnk/ocserv-install.git`
- - Получите LE сертификат и введи <секретное_слово> для подключения к ocserv `sudo ./ssl`
- - Убедитесь что ваша sshd служба работает на порту 22
+ - Скопируйте .env.example в .env файл и настройте нужные параметры
+ - Получите LE сертификат для подключения к ocserv `sudo ./ssl.sh`
  - Выполните установку `sudo ./install.sh`
  - Проверьте работу ocserv `sudo systemctl status ocserv`
  - Создать пользователя `sudo ocpasswd -c /etc/ocserv/ocpasswd <username>`
- - Подключение `https://<ваш_домен>?<секретное_слово>`
+ - Подключение `https://<DOMAIN>?<SECRET>`

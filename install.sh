@@ -17,11 +17,12 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
   
   # Проверяем, что необходимые переменные установлены
-  if [ -z "$DOMAIN" ] || [ -z "$SECRET" ]; then
+  if [ -z "$DOMAIN" ] || [ -z "$SECRET" ] || [ -z "$SSH_PORT" ]; then
     echo "Ошибка: В файле .env не найдены обязательные переменные DOMAIN и/или SECRET"
     echo "Пример содержимого .env файла:"
     echo "DOMAIN=example.com"
     echo "SECRET=your_secret_password"
+    echo "SSH_PORT=your_ssh_port"
     exit 1
   fi
 else
@@ -122,9 +123,9 @@ EOF
 sysctl -p /etc/sysctl.d/60-custom.conf
 
 # Установка и базовая настройка UFW
-echo "Устанавливаем ufw и разрешаем доступ по SSH (порт 22)..."
+echo "Устанавливаем ufw и разрешаем доступ по SSH..."
 apt install -y ufw
-ufw allow 22/tcp
+ufw allow $SSH_PORT/tcp
 
 # Перед внесением изменений делаем резервную копию файла before.rules
 cp /etc/ufw/before.rules /etc/ufw/before.rules.bak
@@ -178,8 +179,6 @@ systemctl restart ufw
 
 # Финальная перезагрузка демона systemd и разрешение SSH-порта (на всякий случай)
 systemctl daemon-reload
-ufw allow 22/tcp
-
 systemctl restart ocserv
 
 # Добавление cron задания для перезапуска ocserv каждое первое число месяца в 4:00 ночи
