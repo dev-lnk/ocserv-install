@@ -123,9 +123,9 @@ EOF
 sysctl -p /etc/sysctl.d/60-custom.conf
 
 # Установка и базовая настройка UFW
-echo "Устанавливаем ufw и разрешаем доступ по SSH..."
-apt install -y ufw
-ufw allow $SSH_PORT/tcp
+#echo "Устанавливаем ufw и разрешаем доступ по SSH..."
+#apt install -y ufw
+#ufw allow $SSH_PORT/tcp
 
 # Перед внесением изменений делаем резервную копию файла before.rules
 cp /etc/ufw/before.rules /etc/ufw/before.rules.bak
@@ -164,17 +164,17 @@ EOF
 fi
 
 # Разрешаем порт 443 (TCP и UDP) перед перезапуском ufw
-echo "Разрешение порта 443 (TCP и UDP)..."
-ufw allow 443/tcp
-ufw allow 443/udp
+#cho "Разрешение порта 443 (TCP и UDP)..."
+#ufw allow 443/tcp
+#ufw allow 443/udp
 
 # Разрешаем порт 443 (TCP и UDP) перед перезапуском ufw
-echo "Разрешение порта 80 (TCP и UDP)..."
-ufw allow 80/tcp
-ufw allow 80/udp
+#echo "Разрешение порта 80 (TCP и UDP)..."
+#ufw allow 80/tcp
+#ufw allow 80/udp
 
 echo "Включаем ufw и перезапускаем службу..."
-ufw --force enable
+#ufw --force enable
 systemctl restart ufw
 
 # Финальная перезагрузка демона systemd и разрешение SSH-порта (на всякий случай)
