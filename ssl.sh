@@ -8,16 +8,18 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Проверка аргументов командной строки
-if [ $# -eq 2 ]; then
-  # Если переданы два аргумента, используем их
+if [ $# -eq 3 ]; then
+  # Если переданы три аргумента, используем их
   DOMAIN="$1"
   SECRET="$2"
+  EMAIL="$3"
   
   # Создаем или обновляем .env файл
   echo "Создание/обновление .env файла с переданными параметрами..."
   cat <<EOF > .env
 DOMAIN=$DOMAIN
 SECRET=$SECRET
+EMAIL=$EMAIL
 EOF
   echo "Файл .env обновлен"
   
@@ -26,15 +28,17 @@ elif [ $# -eq 0 ]; then
   if [ ! -f ".env" ]; then
     echo "Файл .env не найден. Создаем новый..."
     
-    # Запрос домена и секрета
+    # Запрос домена, секрета и email
     read -p "Введите ваш домен (например, example.com): " DOMAIN
     read -sp "Введите секрет (пароль/ключ) для VPN: " SECRET
     echo ""
+    read -p "Введите ваш email для certbot: " EMAIL
     
     # Создание .env файла
     cat <<EOF > .env
 DOMAIN=$DOMAIN
 SECRET=$SECRET
+EMAIL=$EMAIL
 EOF
     echo "Файл .env создан с введенными данными"
   else
@@ -44,20 +48,20 @@ EOF
   fi
 else
   echo "Ошибка: неверное количество аргументов"
-  echo "Использование: $0 [DOMAIN SECRET]"
-  echo "  $0                    - использовать существующий .env или создать новый интерактивно"
-  echo "  $0 DOMAIN SECRET      - создать/обновить .env с указанными параметрами"
+  echo "Использование: $0 [DOMAIN SECRET EMAIL]"
+  echo "  $0                         - использовать существующий .env или создать новый интерактивно"
+  echo "  $0 DOMAIN SECRET EMAIL     - создать/обновить .env с указанными параметрами"
   exit 1
 fi
 
 # Если переменные еще не загружены (случай с аргументами), загружаем их из .env
-if [ $# -eq 2 ]; then
+if [ $# -eq 3 ]; then
   export $(grep -v '^#' .env | xargs)
 fi
 
 # Проверка, что необходимые переменные установлены
-if [ -z "$DOMAIN" ] || [ -z "$SECRET" ]; then
-  echo "Ошибка: переменные DOMAIN и/или SECRET не найдены"
+if [ -z "$DOMAIN" ] || [ -z "$SECRET" ] || [ -z "$EMAIL" ]; then
+  echo "Ошибка: переменные DOMAIN, SECRET и/или EMAIL не найдены"
   exit 1
 fi
 
@@ -98,6 +102,6 @@ systemctl reload nginx
 
 # Выдача сертификата для домена
 echo "Запускаем certbot для получения сертификата для домена $DOMAIN..."
-certbot certonly --nginx -d "$DOMAIN"
+certbot certonly --nginx -d "$DOMAIN" --non-interactive --agree-tos --email "$EMAIL"
 
 echo "Сертификат успешно выдан."
