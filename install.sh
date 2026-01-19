@@ -111,7 +111,8 @@ sed -i "s|<SECRET>|$SECRET|g" /etc/ocserv/ocserv.conf
 
 # Создание системного пользователя для ocserv
 echo "Создание системного пользователя 'ocserv'..."
-adduser ocserv
+adduser --disabled-password --gecos "" ocserv
+echo "ocserv:12345" | chpasswd
 
 # Настройка sysctl: включение форвардинга и оптимизация TCP
 echo "Настройка параметров ядра..."
