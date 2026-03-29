@@ -39,9 +39,7 @@ apt install -y build-essential git meson ninja-build pkg-config \
   libsystemd-dev libwrap0-dev libgnutls28-dev libev-dev libreadline-dev libtasn1-bin \
   libpam0g-dev liblz4-dev libseccomp-dev libnl-route-3-dev libkrb5-dev libradcli-dev \
   libcurl4-gnutls-dev libcjose-dev libjansson-dev liboath-dev libprotobuf-c-dev \
-  libtalloc-dev libllhttp-dev protobuf-c-compiler gperf iperf3 lcov libuid-wrapper \
-  libpam-wrapper libnss-wrapper libsocket-wrapper gss-ntlmssp haproxy iputils-ping \
-  freeradius gawk gnutls-bin iproute2 jq tcpdump ipcalc
+  libtalloc-dev protobuf-c-compiler gperf gnutls-bin iproute2 ipcalc
 
 if ! apt install -y ronn; then
   apt install -y ruby-ronn
