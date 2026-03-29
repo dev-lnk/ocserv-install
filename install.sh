@@ -35,40 +35,54 @@ fi
 
 echo "Устанавливаем необходимые зависимости..."
 apt update
-apt install -y git ruby-ronn libbsd-dev libsystemd-dev libpcl-dev libwrap0-dev \
-  libgnutls28-dev libev-dev libpam0g-dev liblz4-dev libseccomp-dev libreadline-dev \
-  libnl-route-3-dev libkrb5-dev libradcli-dev libcurl4-gnutls-dev libcjose-dev \
-  libjansson-dev libprotobuf-c-dev libtalloc-dev libhttp-parser-dev protobuf-c-compiler \
-  gperf nuttcp lcov libuid-wrapper libpam-wrapper libnss-wrapper libsocket-wrapper \
-  gss-ntlmssp haproxy iputils-ping freeradius gawk gnutls-bin iproute2 yajl-tools tcpdump \
-  autoconf automake ipcalc
+apt install -y build-essential git meson ninja-build pkg-config \
+  libsystemd-dev libwrap0-dev libgnutls28-dev libev-dev libreadline-dev libtasn1-bin \
+  libpam0g-dev liblz4-dev libseccomp-dev libnl-route-3-dev libkrb5-dev libradcli-dev \
+  libcurl4-gnutls-dev libcjose-dev libjansson-dev liboath-dev libprotobuf-c-dev \
+  libtalloc-dev libllhttp-dev protobuf-c-compiler gperf iperf3 lcov libuid-wrapper \
+  libpam-wrapper libnss-wrapper libsocket-wrapper gss-ntlmssp haproxy iputils-ping \
+  freeradius gawk gnutls-bin iproute2 jq tcpdump ipcalc
+
+if ! apt install -y ronn; then
+  apt install -y ruby-ronn
+fi
 
 # Клонирование репозитория ocserv и компиляция
 echo "Клонирование репозитория ocserv..."
 git clone https://gitlab.com/openconnect/ocserv.git && cd ocserv
 
-echo "Подготавливаем автоконфигурацию..."
-autoreconf -fvi
+echo "Инициализируем git submodules..."
+git submodule update --init
 
-echo "Конфигурация и компиляция ocserv (это может занять время)..."
-./configure && make
+echo "Конфигурация и компиляция ocserv через meson (это может занять время)..."
+meson setup build
+ninja -C build
 
-echo "Установка ocserv..."
-make install
+echo "Установка ocserv через meson..."
+meson install -C build
 
 # Настройка systemd-сервиса для ocserv
-if [ ! -f /lib/systemd/system/ocserv.service ]; then
+UNIT_TARGET=/etc/systemd/system/ocserv.service
+UNIT_SOURCE=""
+for candidate in /lib/systemd/system/ocserv.service /usr/lib/systemd/system/ocserv.service /usr/local/lib/systemd/system/ocserv.service; do
+    if [ -f "$candidate" ]; then
+        UNIT_SOURCE="$candidate"
+        break
+    fi
+done
+
+if [ -z "$UNIT_SOURCE" ]; then
     echo "Файл /lib/systemd/system/ocserv.service не найден. Создаю собственный systemd-сервис для ocserv..."
 
     # Получаем путь к исполняемому файлу ocserv
-    OCSERV_BIN=$(which ocserv)
+    OCSERV_BIN=$(command -v ocserv)
     if [ -z "$OCSERV_BIN" ]; then
         echo "Ошибка: ocserv не найден в системе. Проверьте, что он установлен."
         exit 1
     fi
 
     # Создаём (или перезаписываем) файл /etc/systemd/system/ocserv.service
-    cat <<EOF > /etc/systemd/system/ocserv.service
+    cat <<EOF > "$UNIT_TARGET"
 [Unit]
 Description=OpenConnect SSL VPN server
 Documentation=man:ocserv(8)
@@ -85,10 +99,10 @@ ExecReload=/bin/kill -HUP \$MAINPID
 WantedBy=multi-user.target
 EOF
 
-    echo "Файл /etc/systemd/system/ocserv.service создан."
+    echo "Файл $UNIT_TARGET создан."
 else
     # Если стандартный файл сервиса найден, копируем его в /etc/systemd/system
-    cp /lib/systemd/system/ocserv.service /etc/systemd/system/ocserv.service
+    cp "$UNIT_SOURCE" "$UNIT_TARGET"
 fi
 
 systemctl daemon-reload
