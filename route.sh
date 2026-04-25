@@ -14,7 +14,8 @@ LOG_FILE="/var/log/ocserv-bypass-ru.log"
 UPDATER="/usr/local/sbin/update-ocserv-bypass-ru.sh"
 CRON_FILE="/etc/cron.d/ocserv-bypass-ru"
 LOCK_FILE="/run/lock/ocserv-route-setup.lock"
-DEFAULT_MAX_ROUTES="${MAX_ROUTES:-1000}"
+DEFAULT_MAX_ROUTES="${MAX_ROUTES:-0}"
+DEFAULT_ROUTE_SOURCE_MODE="${ROUTE_SOURCE_MODE:-subnets}"
 
 log() {
   printf '[route.sh] %s\n' "$*"
@@ -227,14 +228,30 @@ LOCAL_INCLUDE="/etc/ocserv/route-bypass-ru.include"
 LOCAL_EXCLUDE="/etc/ocserv/route-bypass-ru.exclude"
 
 MIN_ROUTES="${MIN_ROUTES:-20}"
-MAX_ROUTES="${MAX_ROUTES:-1000}"
+MAX_ROUTES="${MAX_ROUTES:-0}"
+ROUTE_SOURCE_MODE="${ROUTE_SOURCE_MODE:-subnets}"
 
-URLS=(
-  "https://antifilter.download/list/ipresolve.lst"
-  "https://antifilter.download/list/subnet.lst"
-  "https://community.antifilter.download/list/community.lst"
-  "https://raw.githubusercontent.com/1andrevich/Re-filter-lists/refs/heads/main/ipsum.lst"
-)
+case "${ROUTE_SOURCE_MODE}" in
+  subnets)
+    URLS=(
+      "https://antifilter.download/list/subnet.lst"
+      "https://community.antifilter.download/list/community.lst"
+      "https://raw.githubusercontent.com/1andrevich/Re-filter-lists/refs/heads/main/ipsum.lst"
+    )
+    ;;
+  full)
+    URLS=(
+      "https://antifilter.download/list/ipresolve.lst"
+      "https://antifilter.download/list/subnet.lst"
+      "https://community.antifilter.download/list/community.lst"
+      "https://raw.githubusercontent.com/1andrevich/Re-filter-lists/refs/heads/main/ipsum.lst"
+    )
+    ;;
+  *)
+    echo "ERROR: ROUTE_SOURCE_MODE must be subnets or full" >&2
+    exit 1
+    ;;
+esac
 
 TMP_DIR="$(mktemp -d)"
 RAW_INPUT="${TMP_DIR}/raw_input.txt"
@@ -406,6 +423,7 @@ fi
   echo "# Local include: ${LOCAL_INCLUDE}"
   echo "# Local exclude: ${LOCAL_EXCLUDE}"
   echo "# MAX_ROUTES: ${MAX_ROUTES}"
+  echo "# ROUTE_SOURCE_MODE: ${ROUTE_SOURCE_MODE}"
   echo "# Generated at: $(date -u +%F\ %T) UTC"
   echo
   echo "route = default"
@@ -480,6 +498,7 @@ install_cron() {
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 MAX_ROUTES=${DEFAULT_MAX_ROUTES}
+ROUTE_SOURCE_MODE=${DEFAULT_ROUTE_SOURCE_MODE}
 
 17 4 * * * root ${UPDATER} >> ${LOG_FILE} 2>&1
 EOF
@@ -539,7 +558,7 @@ main() {
   install_cron
 
   log "generating initial ${GROUP_NAME} route config"
-  MAX_ROUTES="${DEFAULT_MAX_ROUTES}" "${UPDATER}" >> "${LOG_FILE}" 2>&1
+  MAX_ROUTES="${DEFAULT_MAX_ROUTES}" ROUTE_SOURCE_MODE="${DEFAULT_ROUTE_SOURCE_MODE}" "${UPDATER}" >> "${LOG_FILE}" 2>&1
 
   log "done"
   log "new users must be created with: ocpasswd -c ${OCPASSWD} -g ${GROUP_NAME} USERNAME"
