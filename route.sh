@@ -14,6 +14,7 @@ LOG_FILE="/var/log/ocserv-bypass-ru.log"
 UPDATER="/usr/local/sbin/update-ocserv-bypass-ru.sh"
 CRON_FILE="/etc/cron.d/ocserv-bypass-ru"
 LOCK_FILE="/run/lock/ocserv-route-setup.lock"
+DEFAULT_MAX_ROUTES="${MAX_ROUTES:-1000}"
 
 log() {
   printf '[route.sh] %s\n' "$*"
@@ -102,6 +103,102 @@ configure_ocserv_conf() {
   log "updated ${OCSERV_CONF}"
 }
 
+write_minimal_group_config() {
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  mkdir -p "${GROUP_DIR}" "${DEFAULTS_DIR}"
+
+  cat > "${tmp_file}" <<EOF
+# Managed by route.sh
+# Minimal fallback profile for ${GROUP_NAME}.
+
+route = default
+tunnel-all-dns = true
+dns = 1.1.1.1
+dns = 8.8.8.8
+EOF
+
+  if [ -f "${GROUP_DIR}/${GROUP_NAME}" ]; then
+    mkdir -p "${STATE_DIR}/backup"
+    cp -a "${GROUP_DIR}/${GROUP_NAME}" "${STATE_DIR}/backup/${GROUP_NAME}.minimal-fallback.$(date +%F-%H%M%S)"
+  fi
+
+  install -m 0640 -o root -g root "${tmp_file}" "${GROUP_DIR}/${GROUP_NAME}"
+  rm -f "${tmp_file}"
+  ln -sfn "${GROUP_DIR}/${GROUP_NAME}" "${DEFAULT_GROUP_FILE}"
+}
+
+reload_ocserv() {
+  ocserv -t -c "${OCSERV_CONF}"
+
+  if systemctl reload ocserv 2>/dev/null; then
+    log "ocserv reloaded"
+  else
+    systemctl restart ocserv
+    log "ocserv restarted"
+  fi
+}
+
+rescue_connection() {
+  require_root "$@"
+  require_command install
+  require_command ocserv
+  require_command systemctl
+
+  backup_file "${OCSERV_CONF}"
+  backup_file "${OCPASSWD}"
+  configure_ocserv_conf
+  write_minimal_group_config
+  reload_ocserv
+
+  log "rescue profile installed; reconnect the VPN client now"
+}
+
+disable_route_layer() {
+  [ -f "${OCSERV_CONF}" ] || die "${OCSERV_CONF} not found"
+
+  local tmp_file
+  tmp_file="$(mktemp)"
+
+  awk '
+    /^[[:space:]]*config-per-group[[:space:]]*=/ {
+      print "# disabled by route.sh rollback: " $0
+      next
+    }
+
+    /^[[:space:]]*default-group-config[[:space:]]*=/ {
+      print "# disabled by route.sh rollback: " $0
+      next
+    }
+
+    { print }
+  ' "${OCSERV_CONF}" > "${tmp_file}"
+
+  install -m 0640 -o root -g root "${tmp_file}" "${OCSERV_CONF}"
+  rm -f "${tmp_file}"
+  log "disabled route layer in ${OCSERV_CONF}"
+}
+
+rollback_route_layer() {
+  require_root "$@"
+  require_command install
+  require_command ocserv
+  require_command systemctl
+
+  backup_file "${OCSERV_CONF}"
+  backup_file "${OCPASSWD}"
+  disable_route_layer
+
+  if [ -f "${CRON_FILE}" ]; then
+    mv "${CRON_FILE}" "${CRON_FILE}.disabled.$(date +%F-%H%M%S)"
+    log "disabled cron job: ${CRON_FILE}"
+  fi
+
+  reload_ocserv
+  log "routing layer rolled back; reconnect the VPN client now"
+}
+
 install_updater() {
   mkdir -p "$(dirname "${UPDATER}")"
 
@@ -130,6 +227,7 @@ LOCAL_INCLUDE="/etc/ocserv/route-bypass-ru.include"
 LOCAL_EXCLUDE="/etc/ocserv/route-bypass-ru.exclude"
 
 MIN_ROUTES="${MIN_ROUTES:-20}"
+MAX_ROUTES="${MAX_ROUTES:-1000}"
 
 URLS=(
   "https://antifilter.download/list/ipresolve.lst"
@@ -144,6 +242,7 @@ RAW_EXCLUDE="${TMP_DIR}/raw_exclude.txt"
 NORMALIZED="${TMP_DIR}/normalized.txt"
 EXCLUDE_NORMALIZED="${TMP_DIR}/exclude_normalized.txt"
 FILTERED="${TMP_DIR}/filtered.txt"
+LIMITED="${TMP_DIR}/limited.txt"
 NEW_GROUP_FILE="${TMP_DIR}/${GROUP_NAME}"
 
 cleanup() {
@@ -275,6 +374,23 @@ else
   cp "${NORMALIZED}" "${FILTERED}"
 fi
 
+if [ "${MAX_ROUTES}" != "0" ]; then
+  case "${MAX_ROUTES}" in
+    ''|*[!0-9]*)
+      echo "ERROR: MAX_ROUTES must be a positive integer or 0 for unlimited" >&2
+      exit 1
+      ;;
+  esac
+
+  if [ "${MAX_ROUTES}" -lt 1 ]; then
+    echo "ERROR: MAX_ROUTES must be a positive integer or 0 for unlimited" >&2
+    exit 1
+  fi
+
+  head -n "${MAX_ROUTES}" "${FILTERED}" > "${LIMITED}"
+  mv "${LIMITED}" "${FILTERED}"
+fi
+
 ROUTE_COUNT="$(grep -c '.' "${FILTERED}" || true)"
 
 if [ "${ROUTE_COUNT}" -lt "${MIN_ROUTES}" ]; then
@@ -289,6 +405,7 @@ fi
   echo "# Group: ${GROUP_NAME}"
   echo "# Local include: ${LOCAL_INCLUDE}"
   echo "# Local exclude: ${LOCAL_EXCLUDE}"
+  echo "# MAX_ROUTES: ${MAX_ROUTES}"
   echo "# Generated at: $(date -u +%F\ %T) UTC"
   echo
   echo "route = default"
@@ -362,6 +479,7 @@ install_cron() {
   cat > "${CRON_FILE}" <<EOF
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAX_ROUTES=${DEFAULT_MAX_ROUTES}
 
 17 4 * * * root ${UPDATER} >> ${LOG_FILE} 2>&1
 EOF
@@ -371,11 +489,31 @@ EOF
 }
 
 main() {
+  local mode="${1:-apply}"
+
   require_root "$@"
 
   mkdir -p /run/lock
   exec 8>"${LOCK_FILE}"
   flock -n 8 || die "another route.sh instance is already running"
+
+  case "${mode}" in
+    apply)
+      ;;
+    --rescue|rescue)
+      shift || true
+      rescue_connection "$@"
+      return
+      ;;
+    --rollback|rollback)
+      shift || true
+      rollback_route_layer "$@"
+      return
+      ;;
+    *)
+      die "unknown mode: $1. Use: $0 [apply|--rescue|--rollback]"
+      ;;
+  esac
 
   require_command awk
   require_command curl
@@ -401,7 +539,7 @@ main() {
   install_cron
 
   log "generating initial ${GROUP_NAME} route config"
-  "${UPDATER}" >> "${LOG_FILE}" 2>&1
+  MAX_ROUTES="${DEFAULT_MAX_ROUTES}" "${UPDATER}" >> "${LOG_FILE}" 2>&1
 
   log "done"
   log "new users must be created with: ocpasswd -c ${OCPASSWD} -g ${GROUP_NAME} USERNAME"
